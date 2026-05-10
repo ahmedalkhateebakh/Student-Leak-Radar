@@ -7,3 +7,7 @@ Thumbs.db
 
 project/data/raw/*.csv
 *.zip
+
+project/data/raw/*.csv
+project/data/processed/*.csv
+*.zip
