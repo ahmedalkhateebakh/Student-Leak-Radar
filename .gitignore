@@ -29,13 +29,6 @@ project/data/processed/
 # Ignore ALL CSV files by default
 # =========================================================
 *.csv
-
-# =========================================================
-# Allow ONLY processed datasets inside notebooks
-# =========================================================
-!project/notebooks/data/processed/
-!project/notebooks/data/processed/*.csv
-
 # =========================================================
 # Ignore Tests Folder
 # =========================================================
