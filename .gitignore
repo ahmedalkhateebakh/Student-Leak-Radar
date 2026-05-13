@@ -43,3 +43,7 @@ project/tests/
 # Optional: Ignore notebook outputs cache
 # =========================================================
 *.nbconvert.ipynb
+
+
+*.pkl
+project/notebooks/models/
