@@ -5,7 +5,8 @@ Prepare OULAD-like raw records for the selected 50% Early Warning model.
 
 Supported inputs:
     1) Folder of CSV files:
-       studentInfo.csv, courses.csv, studentVle.csv, vle.csv, assessments.csv, studentAssessment.csv
+       studentInfo.csv, courses.csv, studentVle.csv, assessments.csv, studentAssessment.csv
+       Optional: vle.csv, used for activity-type click features.
     2) JSON file with the same table names as top-level keys.
     3) XLSX file with the same table names as sheet names.
     4) SQLite .db file with the same table names.
@@ -78,9 +79,6 @@ REQUIRED_TABLES = {
         "id_student", "code_module", "code_presentation",
         "id_site", "date", "sum_click",
     ],
-    "vle": [
-        "id_site", "code_module", "code_presentation", "activity_type",
-    ],
     "assessments": [
         "id_assessment", "code_module", "code_presentation", "date",
     ],
@@ -88,6 +86,14 @@ REQUIRED_TABLES = {
         "id_student", "id_assessment", "date_submitted", "score",
     ],
 }
+
+OPTIONAL_TABLES = {
+    "vle": [
+        "id_site", "code_module", "code_presentation", "activity_type",
+    ],
+}
+
+KNOWN_TABLES = set(REQUIRED_TABLES) | set(OPTIONAL_TABLES)
 
 # Columns that must be numeric because feature-engineering operations depend on them.
 NUMERIC_REQUIRED_COLUMNS = {
@@ -189,7 +195,7 @@ def _load_csv_folder(folder: Path) -> Dict[str, pd.DataFrame]:
     data: Dict[str, pd.DataFrame] = {}
     for csv_path in folder.glob("*.csv"):
         table_name = _canonical_table_name(csv_path.name)
-        if table_name in REQUIRED_TABLES:
+        if table_name in KNOWN_TABLES:
             data[table_name] = _standardize_columns(pd.read_csv(csv_path))
     return data
 
@@ -205,7 +211,7 @@ def _load_json(path: Path) -> Dict[str, pd.DataFrame]:
         raise ProcessingInputError(
             "Single-list JSON is not feature-ready.",
             reason="A JSON list must already contain all model features, otherwise raw OULAD-like data must be nested by table name.",
-            action="Use a JSON object with keys: studentInfo, courses, studentVle, vle, assessments, studentAssessment."
+            action="Use a JSON object with keys: studentInfo, courses, studentVle, assessments, studentAssessment. Add optional vle for activity-type features."
         )
 
     if not isinstance(payload, dict):
@@ -231,7 +237,7 @@ def _load_json(path: Path) -> Dict[str, pd.DataFrame]:
         if _is_feature_ready_table(df):
             return {"feature_table": df}
 
-    return {k: v for k, v in data.items() if k in REQUIRED_TABLES}
+    return {k: v for k, v in data.items() if k in KNOWN_TABLES}
 
 
 def _load_xlsx(path: Path) -> Dict[str, pd.DataFrame]:
@@ -242,7 +248,7 @@ def _load_xlsx(path: Path) -> Dict[str, pd.DataFrame]:
         if _is_feature_ready_table(df):
             return {"feature_table": df}
 
-    return {k: v for k, v in data.items() if k in REQUIRED_TABLES}
+    return {k: v for k, v in data.items() if k in KNOWN_TABLES}
 
 
 def _load_sqlite_db(path: Path) -> Dict[str, pd.DataFrame]:
@@ -257,7 +263,7 @@ def _load_sqlite_db(path: Path) -> Dict[str, pd.DataFrame]:
             df = _standardize_columns(pd.read_sql(f'SELECT * FROM "{table}"', conn))
             if _is_feature_ready_table(df):
                 return {"feature_table": df}
-            if canonical in REQUIRED_TABLES:
+            if canonical in KNOWN_TABLES:
                 data[canonical] = df
     return data
 
@@ -279,7 +285,7 @@ def load_input(path: str | Path) -> Dict[str, pd.DataFrame]:
             raise ProcessingInputError(
                 "No required CSV tables found in folder.",
                 reason="The folder must contain OULAD-like CSV files.",
-                action="Add CSV files named studentInfo.csv, courses.csv, studentVle.csv, vle.csv, assessments.csv, and studentAssessment.csv."
+                action="Add CSV files named studentInfo.csv, courses.csv, studentVle.csv, assessments.csv, and studentAssessment.csv. Add optional vle.csv for activity-type features."
             )
         return data
 
@@ -348,6 +354,19 @@ def _validate_required_columns(data: Dict[str, pd.DataFrame]) -> None:
                 table=table,
                 reason="This table is needed for feature engineering.",
                 action=f"Add these column(s): {missing}"
+            )
+
+    for table, required_cols in OPTIONAL_TABLES.items():
+        if table not in data:
+            continue
+        df = data[table]
+        missing = [col for col in required_cols if col not in df.columns]
+        if missing:
+            raise ProcessingInputError(
+                "Optional table is present but missing required column(s).",
+                table=table,
+                reason="This table can enrich activity-type features when provided.",
+                action=f"Add these column(s), or remove the optional table: {missing}"
             )
 
 
@@ -450,7 +469,9 @@ def build_model_ready_dataframe(
     student_info = data["studentInfo"].copy()
     courses = data["courses"].copy()
     student_vle = data["studentVle"].copy()
-    vle = data["vle"].copy()
+    vle = data.get("vle")
+    if vle is not None:
+        vle = vle.copy()
     assessments = data["assessments"].copy()
     student_assessment = data["studentAssessment"].copy()
 
@@ -478,15 +499,22 @@ def build_model_ready_dataframe(
     # ------------------------------------------------------------------
     # VLE features up to cutoff
     # ------------------------------------------------------------------
-    vle_events = student_vle.merge(
-        vle[["id_site", "code_module", "code_presentation", "activity_type"]],
-        on=["id_site", "code_module", "code_presentation"],
-        how="left",
-        validate="many_to_one"
-    )
+    if vle is None:
+        warnings.append(
+            "Optional table 'vle' was not provided. Activity-type click features will be filled with 0."
+        )
+        vle_events = student_vle.copy()
+        vle_events["activity_type"] = np.nan
+    else:
+        vle_events = student_vle.merge(
+            vle[["id_site", "code_module", "code_presentation", "activity_type"]],
+            on=["id_site", "code_module", "code_presentation"],
+            how="left",
+            validate="many_to_one"
+        )
 
-    missing_activity_type = vle_events["activity_type"].isna().sum()
-    if missing_activity_type:
+    missing_activity_type = int(vle_events["activity_type"].isna().sum())
+    if missing_activity_type and vle is not None:
         warnings.append(
             f"{missing_activity_type} studentVle rows could not be matched to vle.activity_type. "
             "These rows will not contribute to activity-type features."
@@ -551,23 +579,28 @@ def build_model_ready_dataframe(
             vle_features["active_days_ratio_until_cutoff"] * arab_semester_length
         )
 
-        activity_features = vle_until_cutoff.pivot_table(
-            index=KEY_COLUMNS,
-            columns="activity_type",
-            values="sum_click",
-            aggfunc="sum",
-            fill_value=0,
-        ).reset_index()
-        activity_features.columns.name = None
+        if vle_until_cutoff["activity_type"].notna().any():
+            activity_features = vle_until_cutoff.pivot_table(
+                index=KEY_COLUMNS,
+                columns="activity_type",
+                values="sum_click",
+                aggfunc="sum",
+                fill_value=0,
+            ).reset_index()
+            activity_features.columns.name = None
 
-        for col in ACTIVITY_FEATURES:
-            if col not in activity_features.columns:
+            for col in ACTIVITY_FEATURES:
+                if col not in activity_features.columns:
+                    activity_features[col] = 0
+                    warnings.append(
+                        f"Activity type '{col}' was not found before cutoff. Feature '{col}' filled with 0."
+                    )
+
+            activity_features = activity_features[KEY_COLUMNS + ACTIVITY_FEATURES]
+        else:
+            activity_features = base[KEY_COLUMNS].copy()
+            for col in ACTIVITY_FEATURES:
                 activity_features[col] = 0
-                warnings.append(
-                    f"Activity type '{col}' was not found before cutoff. Feature '{col}' filled with 0."
-                )
-
-        activity_features = activity_features[KEY_COLUMNS + ACTIVITY_FEATURES]
 
     # ------------------------------------------------------------------
     # Assessment features up to cutoff

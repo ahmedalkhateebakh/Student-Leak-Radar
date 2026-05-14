@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import Papa from "papaparse";
 import { styles } from "./styles";
 
 const STEPS = ["Start", "Model", "Data", "Review", "Results"];
@@ -23,24 +24,8 @@ const initialFormData = {
   oucontent: "",
   quiz: "",
   highest_education: "",
+  imd_band: "",
 };
-
-const numericFields = [
-  "avg_score_until_cutoff",
-  "submitted_assessments_until_cutoff",
-  "arab_active_days_equivalent_until_cutoff",
-  "avg_submission_delay_arab_days_until_cutoff",
-  "homepage",
-  "forumng",
-  "unique_sites_until_cutoff",
-  "unique_activity_types_until_cutoff",
-  "clicks_per_active_day_until_cutoff",
-  "resource",
-  "subpage",
-  "url",
-  "oucontent",
-  "quiz",
-];
 
 const featureGroups = [
   {
@@ -94,6 +79,12 @@ const featureGroups = [
         type: "select",
         options: ["", "No Formal quals", "Lower Than A Level", "A Level or Equivalent", "HE Qualification", "Post Graduate Qualification"],
       },
+      {
+        name: "imd_band",
+        label: "IMD Band",
+        type: "select",
+        options: ["", "0-10%", "10-20%", "20-30%", "30-40%", "40-50%", "50-60%", "60-70%", "70-80%", "80-90%", "90-100%", "Unknown"],
+      },
     ],
   },
 ];
@@ -120,6 +111,70 @@ function buildFeatures(source) {
   };
 }
 
+function cleanImportedRows(rows) {
+  return rows
+    .map((row, index) => ({ row_number: row.row_number || index + 1, ...row }))
+    .filter((row) => Object.keys(row || {}).some((key) => row[key] !== null && row[key] !== undefined && row[key] !== ""));
+}
+
+function buildPredictionExportRows({ formData, uploadedRows, batchResults, prediction }) {
+  if (formData.inputMethod === INPUT_METHODS.file && uploadedRows.length && batchResults.length) {
+    return uploadedRows.map((row, index) => {
+      const result = batchResults[index] || {};
+      return enrichPredictionRow(row, result, formData.selectedModel);
+    });
+  }
+  if (formData.inputMethod === INPUT_METHODS.manual && prediction) {
+    return [enrichPredictionRow(buildFeatures(formData), prediction, formData.selectedModel)];
+  }
+  return [];
+}
+
+function enrichPredictionRow(row, result, selectedModel) {
+  const riskScore = Number(result.riskScore ?? result.risk_score ?? 0);
+  const level = result.level || predictionLevelFromRisk(riskScore);
+  return {
+    ...row,
+    predicted_target: targetFromLevel(level, riskScore),
+    prediction_level: level,
+    predicted_risk_score: riskScore,
+    prediction_confidence: result.confidence ?? "",
+    selected_model: selectedModel === "model_25" ? "25_percent" : "50_percent",
+  };
+}
+
+function targetFromLevel(level, riskScore) {
+  const normalized = String(level || "").toLowerCase();
+  if (normalized.includes("high") || normalized.includes("medium") || riskScore >= 40) return "at_risk";
+  return "lower_risk";
+}
+
+function predictionLevelFromRisk(riskScore) {
+  if (riskScore >= 70) return "High Risk";
+  if (riskScore >= 40) return "Medium Risk";
+  return "Low Risk";
+}
+
+function downloadRowsAsCsv(rows, fileName) {
+  downloadText(Papa.unparse(rows), fileName, "text/csv;charset=utf-8");
+}
+
+function downloadRowsAsJson(rows, fileName) {
+  downloadText(JSON.stringify(rows, null, 2), fileName, "application/json;charset=utf-8");
+}
+
+function downloadText(content, fileName, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function PredictWizard() {
   const [step, setStep] = useState(0);
   const [files, setFiles] = useState([]);
@@ -136,7 +191,7 @@ export default function PredictWizard() {
     () => Object.entries(formData).filter(([key, value]) => !["selectedModel", "inputMethod"].includes(key) && value !== "").length,
     [formData]
   );
-  const totalFeatures = 16;
+  const totalFeatures = 17;
   const progressPercent = Math.round((filledCount / totalFeatures) * 100);
 
   const handleChange = (event) => {
@@ -144,38 +199,45 @@ export default function PredictWizard() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const parseCsvText = (text) => {
-    const lines = text.replace(/\r/g, "").split("\n").map((l) => l.trim()).filter(Boolean);
-    if (lines.length < 2) return [];
-    const parseLine = (line) =>
-      line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map((cell) => cell.replace(/^"|"$/g, "").trim());
-    const headers = parseLine(lines[0]);
-    return lines.slice(1).map((line, index) => {
-      const values = parseLine(line);
-      const row = { row_number: index + 1 };
-      headers.forEach((header, i) => { row[header] = values[i] ?? ""; });
-      return row;
-    });
+  const parseUploadedFile = async (file) => {
+    const name = file.name.toLowerCase();
+    if (name.endsWith(".csv")) {
+      const text = await file.text();
+      const result = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: false });
+      if (result.errors?.length) throw new Error(result.errors.slice(0, 2).map((error) => error.message).join(" | "));
+      return cleanImportedRows(result.data);
+    }
+    if (name.endsWith(".json")) {
+      const parsed = JSON.parse(await file.text());
+      const rows = Array.isArray(parsed) ? parsed : parsed.rows || parsed.data || parsed.items || [];
+      if (!Array.isArray(rows)) throw new Error("JSON must be an array or contain rows/data/items array.");
+      return cleanImportedRows(rows);
+    }
+    if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      return cleanImportedRows(XLSX.utils.sheet_to_json(firstSheet, { defval: "" }));
+    }
+    throw new Error("Unsupported file type. Upload CSV, Excel (.xlsx/.xls), or JSON.");
   };
 
-  const addFiles = (incomingFiles) => {
+  const addFiles = async (incomingFiles) => {
     const selected = Array.from(incomingFiles || []);
+    if (!selected.length) return;
     setFiles((prev) => [...prev, ...selected]);
     setFileError("");
     setUploadedRows([]);
     setBatchResults([]);
-    const csvFile = selected.find((f) => f.name.toLowerCase().endsWith(".csv"));
-    if (!csvFile) { setFileError("Please upload a CSV file for batch prediction."); return; }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const rows = parseCsvText(String(e.target.result || ""));
-        if (!rows.length) { setFileError("The CSV file is empty or has no valid rows."); return; }
-        setUploadedRows(rows);
-      } catch { setFileError("Could not parse this CSV file. Please check the format."); }
-    };
-    reader.onerror = () => setFileError("Could not read this file. Please try again.");
-    reader.readAsText(csvFile);
+    try {
+      const supported = selected.find((file) => /\.(csv|json|xlsx|xls)$/i.test(file.name));
+      if (!supported) throw new Error("Please upload CSV, Excel (.xlsx/.xls), or JSON data for batch prediction.");
+      const rows = await parseUploadedFile(supported);
+      if (!rows.length) throw new Error("The selected file is empty or has no valid rows.");
+      setUploadedRows(rows);
+    } catch (error) {
+      setFileError(error.message || "Could not parse this file. Please check the format.");
+    }
   };
 
   const removeFile = (index) => {
@@ -300,6 +362,7 @@ export default function PredictWizard() {
             totalFeatures={totalFeatures}
             files={files}
             batchResults={batchResults}
+            uploadedRows={uploadedRows}
             onReset={() => {
               setPrediction(null);
               setUploadedRows([]);
@@ -346,7 +409,7 @@ function StartStep({ inputMethod, setInputMethod, onNext }) {
           active={inputMethod === INPUT_METHODS.manual}
           icon="⌨️"
           title="Manual Feature Input"
-          desc="Enter the 16 model features directly. Best for testing a single student case."
+          desc="Enter the 17 model features directly. Best for testing a single student case."
           bullets={["Fast single prediction", "Feature-level control", "No file required"]}
           onClick={() => setInputMethod(INPUT_METHODS.manual)}
         />
@@ -354,8 +417,8 @@ function StartStep({ inputMethod, setInputMethod, onNext }) {
           active={inputMethod === INPUT_METHODS.file}
           icon="📦"
           title="Upload Dataset File"
-          desc="Upload a CSV file with student feature columns. Best for batch prediction."
-          bullets={["Batch-ready flow", "CSV format", "Backend-powered scoring"]}
+          desc="Upload CSV, Excel, or JSON data with student feature columns. Best for batch prediction."
+          bullets={["Batch-ready flow", "CSV / Excel / JSON", "Backend-powered scoring"]}
           onClick={() => setInputMethod(INPUT_METHODS.file)}
         />
       </div>
@@ -398,13 +461,17 @@ function ModelStep({ selectedModel, setSelectedModel, onBack, onNext }) {
 }
 
 function DataStep(props) {
-  const { inputMethod, setInputMethod, files, uploadedRows, fileError, addFiles, removeFile, dragOver, setDragOver, formData, handleChange, filledCount, totalFeatures, progressPercent, onBack, onNext, canContinue } = props;
+  const { inputMethod, files, uploadedRows, fileError, addFiles, removeFile, dragOver, setDragOver, formData, handleChange, filledCount, totalFeatures, progressPercent, onBack, onNext, canContinue } = props;
+  const selectedPath = inputMethod === INPUT_METHODS.file ? "File Upload" : "Manual Feature Input";
   return (
     <div className="fade-in">
-      <SectionIntro eyebrow="Step 03" title="Provide the prediction data" desc="You can switch between upload and manual entry anytime before submitting." />
-      <div style={styles.segmentedControl}>
-        <button style={{ ...styles.segmentBtn, ...(inputMethod === INPUT_METHODS.manual ? styles.segmentActive : {}) }} onClick={() => setInputMethod(INPUT_METHODS.manual)} type="button">Manual Input</button>
-        <button style={{ ...styles.segmentBtn, ...(inputMethod === INPUT_METHODS.file ? styles.segmentActive : {}) }} onClick={() => setInputMethod(INPUT_METHODS.file)} type="button">File Upload</button>
+      <SectionIntro eyebrow="Step 03" title="Provide the prediction data" desc={`Using the ${selectedPath} path selected in Step 01.`} />
+      <div style={{ ...styles.previewBox, marginBottom: 22 }}>
+        <div style={styles.resultLabel}>Selected in Step 01</div>
+        <h3 style={{ ...styles.previewTitle, marginBottom: 6 }}>{selectedPath}</h3>
+        <p style={{ ...styles.resultText, margin: 0 }}>
+          Go back to Step 01 if you want to change the input path. This keeps the workflow clean and prevents accidental switching before prediction.
+        </p>
       </div>
       {inputMethod === INPUT_METHODS.file
         ? <UploadPanel files={files} uploadedRows={uploadedRows} fileError={fileError} addFiles={addFiles} removeFile={removeFile} dragOver={dragOver} setDragOver={setDragOver} />
@@ -454,8 +521,12 @@ function ReviewStep({ formData, files, filledCount, totalFeatures, loading, apiE
   );
 }
 
-function ResultsStep({ prediction, formData, filledCount, totalFeatures, files, batchResults, onReset, onBack }) {
+function ResultsStep({ prediction, formData, filledCount, totalFeatures, files, batchResults, uploadedRows, onReset, onBack }) {
   const risk = prediction.riskScore;
+  const exportRows = useMemo(
+    () => buildPredictionExportRows({ formData, uploadedRows, batchResults, prediction }),
+    [formData, uploadedRows, batchResults, prediction]
+  );
   return (
     <div className="fade-in">
       <SectionIntro eyebrow="Step 05" title="Prediction results & analytics" desc="Results computed by the trained Random Forest model." />
@@ -478,12 +549,12 @@ function ResultsStep({ prediction, formData, filledCount, totalFeatures, files, 
           </div>
         </div>
       </div>
+      <PredictionExportPanel rows={exportRows} inputMethod={formData.inputMethod} />
       {formData.inputMethod === "file" && batchResults.length > 0 && <BatchResultsTable results={batchResults} />}
       <div style={styles.chartGrid}>
-        <ChartCard title="Activity Over Time" subtitle="Engagement trend demo"><LineChart /></ChartCard>
-        <ChartCard title="Student vs Average" subtitle="Radar comparison demo"><RadarChart /></ChartCard>
+        <ChartCard title="Student vs Average" subtitle="Feature radar for the current prediction context"><RadarChart /></ChartCard>
         <ChartCard title="Risk Score Gauge" subtitle="Current prediction score"><MiniGauge score={risk} /></ChartCard>
-        <ChartCard title="Student Score Distribution" subtitle="Histogram demo"><Histogram /></ChartCard>
+        <ChartCard title="Score Distribution Signal" subtitle="Feature distribution preview"><Histogram /></ChartCard>
       </div>
       <div style={styles.reviewGrid}>
         <ReviewCard icon="📊" label="Features" value={`${filledCount}/${totalFeatures}`} />
@@ -513,15 +584,15 @@ function UploadPanel({ files, uploadedRows, fileError, addFiles, removeFile, dra
       >
         <div className="interactive-icon smoke-hover" style={styles.dropIcon}>⇪</div>
         <h3 style={styles.dropTitle}>Drop files here or click to browse</h3>
-        <p style={styles.dropText}>Upload a CSV file with feature columns matching the 17 model inputs.</p>
-        <input id="fileInput" type="file" multiple accept=".csv" style={{ display: "none" }} onChange={(e) => addFiles(e.target.files)} />
+        <p style={styles.dropText}>Upload CSV, Excel, or JSON data with columns matching the 17 model inputs.</p>
+        <input id="fileInput" type="file" multiple accept=".csv,.json,.xlsx,.xls" style={{ display: "none" }} onChange={(e) => addFiles(e.target.files)} />
       </div>
       {fileError && <div style={styles.fileError}>{fileError}</div>}
       {uploadedRows.length > 0 && (
         <div style={styles.batchPreviewBox}>
           <div>
-            <div style={styles.batchPreviewTitle}>CSV Loaded Successfully</div>
-            <div style={styles.batchPreviewText}>{uploadedRows.length} student rows are ready for batch prediction.</div>
+            <div style={styles.batchPreviewTitle}>Data Loaded Successfully</div>
+            <div style={styles.batchPreviewText}>{uploadedRows.length} student rows are ready for batch prediction from CSV, Excel, or JSON.</div>
           </div>
           <div style={styles.batchPreviewCount}>{uploadedRows.length}</div>
         </div>
@@ -593,7 +664,7 @@ function BatchResultsTable({ results }) {
         <div>
           <div style={styles.resultLabel}>Batch Prediction Results</div>
           <h3 style={styles.batchResultsTitle}>Students Risk Overview</h3>
-          <p style={styles.batchResultsDesc}>Each CSV row scored by the trained Random Forest model.</p>
+          <p style={styles.batchResultsDesc}>Each uploaded row scored by the trained Random Forest model.</p>
         </div>
         <div style={styles.batchStatsWrap}>
           <Stat label="High Risk" value={high} />
@@ -632,6 +703,30 @@ function BatchResultsTable({ results }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function PredictionExportPanel({ rows, inputMethod }) {
+  if (!rows.length) return null;
+  const label = inputMethod === INPUT_METHODS.file ? "Download enriched dataset" : "Download prediction row";
+  return (
+    <div style={{ ...styles.batchResultsBox, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
+      <div>
+        <div style={styles.resultLabel}>Predicted Target Export</div>
+        <h3 style={styles.batchResultsTitle}>{label}</h3>
+        <p style={styles.batchResultsDesc}>
+          Exports the original data with predicted_target, prediction_level, predicted_risk_score, confidence, and selected_model columns.
+        </p>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button type="button" style={styles.primaryBtn} onClick={() => downloadRowsAsCsv(rows, "student_predictions_with_target.csv")}>
+          Download CSV
+        </button>
+        <button type="button" style={styles.secondaryBtn} onClick={() => downloadRowsAsJson(rows, "student_predictions_with_target.json")}>
+          Download JSON
+        </button>
       </div>
     </div>
   );
@@ -714,19 +809,6 @@ function MiniGauge({ score }) {
       <div style={{ ...styles.miniGaugeFill, width: `${score}%` }} />
       <div style={styles.miniGaugeText}>{score}% risk</div>
     </div>
-  );
-}
-
-function LineChart() {
-  const points = "10,120 70,92 130,98 190,65 250,80 310,42 370,54";
-  return (
-    <svg viewBox="0 0 390 150" style={styles.svgChart}>
-      <path d="M10 130 H380 M10 100 H380 M10 70 H380 M10 40 H380" stroke="rgba(148,163,184,.12)" />
-      <polyline points={points} fill="none" stroke="#10b981" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      {[10, 70, 130, 190, 250, 310, 370].map((x, i) => (
-        <circle key={x} cx={x} cy={[120, 92, 98, 65, 80, 42, 54][i]} r="5" fill="#fff" stroke="#10b981" strokeWidth="3" />
-      ))}
-    </svg>
   );
 }
 

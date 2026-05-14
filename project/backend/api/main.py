@@ -13,8 +13,13 @@ from pydantic import BaseModel
 # Model registry
 # ---------------------------------------------------------------------------
 
-MODELS_DIR = Path(__file__).parent.parent / "models"
-DATA_DIR = Path(__file__).parent.parent / "data" / "raw"
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+PROJECT_DIR = BACKEND_DIR.parent
+MODELS_DIR = BACKEND_DIR / "models"
+DATA_DIR_CANDIDATES = [
+    PROJECT_DIR / "data" / "raw",
+    BACKEND_DIR / "data" / "raw",
+]
 
 MODEL_FEATURES = [
     "avg_score_until_cutoff",
@@ -146,13 +151,23 @@ def _series_to_list(s: pd.Series) -> list[dict]:
     return [{"label": str(k), "count": int(v)} for k, v in s.items()]
 
 
+def _get_data_dir() -> Path:
+    for data_dir in DATA_DIR_CANDIDATES:
+        if (data_dir / "studentInfo.csv").exists():
+            return data_dir
+    return DATA_DIR_CANDIDATES[0]
+
+
 def _build_eda() -> dict:
     result: dict = {}
+    data_dir = _get_data_dir()
+    result["data_dir"] = str(data_dir)
 
     # studentInfo.csv — primary source for most charts
-    info_path = DATA_DIR / "studentInfo.csv"
+    info_path = data_dir / "studentInfo.csv"
     if not info_path.exists():
-        raise HTTPException(500, "studentInfo.csv not found in data/raw/. Please add the OULAD raw files.")
+        checked = ", ".join(str(path) for path in DATA_DIR_CANDIDATES)
+        raise HTTPException(500, f"studentInfo.csv not found in data/raw/. Checked: {checked}")
 
     info = pd.read_csv(info_path)
     result["total_rows"] = len(info)
@@ -168,7 +183,7 @@ def _build_eda() -> dict:
 
     # studentAssessment.csv — score distribution
     try:
-        assessments = pd.read_csv(DATA_DIR / "studentAssessment.csv")
+        assessments = pd.read_csv(data_dir / "studentAssessment.csv")
         scores = assessments["score"].dropna().values
         hist, edges = np.histogram(scores, bins=10, range=(0, 100))
         result["score_bins"] = [
@@ -180,7 +195,7 @@ def _build_eda() -> dict:
 
     # vle.csv — activity type catalog (small file, 6k rows)
     try:
-        vle = pd.read_csv(DATA_DIR / "vle.csv")
+        vle = pd.read_csv(data_dir / "vle.csv")
         result["vle_activities"] = _series_to_list(vle["activity_type"].value_counts())
     except Exception:
         result["vle_activities"] = []
