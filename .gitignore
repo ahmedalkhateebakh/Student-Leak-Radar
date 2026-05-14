@@ -47,3 +47,6 @@ project/tests/
 
 *.pkl
 project/notebooks/models/
+.venv/
+__pycache__/
+*.pyc
