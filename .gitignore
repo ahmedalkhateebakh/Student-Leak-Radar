@@ -22,6 +22,8 @@ data/processed/
 
 project/data/raw/
 project/data/processed/
+project/backend/data/raw/
+project/backend/data/processed/
 
 *.zip
 
@@ -32,12 +34,12 @@ project/data/processed/
 # =========================================================
 # Ignore Tests Folder
 # =========================================================
-project/tests/
+project/backend/tests/
 
 # =========================================================
 # Keep Main Notebooks
 # =========================================================
-!project/notebooks/
+!project/backend/notebooks/
 
 # =========================================================
 # Optional: Ignore notebook outputs cache
@@ -45,8 +47,6 @@ project/tests/
 *.nbconvert.ipynb
 
 
-*.pkl
-project/notebooks/models/
 .venv/
 __pycache__/
 *.pyc
