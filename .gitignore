@@ -55,3 +55,5 @@ __pycache__/
 *.log
 *.ps1
 folder_structure.txt
+
+*.pkl
