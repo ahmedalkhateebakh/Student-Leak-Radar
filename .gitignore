@@ -54,3 +54,4 @@ __pycache__/
 .codex-run/
 *.log
 *.ps1
+folder_structure.txt
