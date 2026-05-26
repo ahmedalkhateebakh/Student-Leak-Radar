@@ -1,4 +1,4 @@
-from contextlib import asynccontextmanager
+from functools import lru_cache
 import os
 from pathlib import Path
 from typing import Optional
@@ -55,7 +55,6 @@ MODEL_URL_ENVS = {
 
 MODEL_CONFIDENCE = {"model_25": 74, "model_50": 86}
 
-_models: dict = {}
 _eda_cache: dict = {}
 
 
@@ -88,24 +87,30 @@ def _ensure_model_file(model_key: str, filename: str) -> Optional[Path]:
     return model_path
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    _models.clear()
+def _configured_models() -> list[str]:
+    models = []
     for key, filename in MODEL_FILES.items():
-        model_path = _ensure_model_file(key, filename)
-        if model_path:
-            _models[key] = joblib.load(model_path)
-            print(f"Loaded {key}: {model_path.name}")
-    if not _models:
-        raise RuntimeError("No models were loaded. Add local .pkl files or set MODEL_25_URL / MODEL_50_URL.")
-    yield
+        has_local_file = (MODELS_DIR / filename).exists()
+        has_remote_url = bool(os.getenv(MODEL_URL_ENVS[key], "").strip())
+        if has_local_file or has_remote_url:
+            models.append(key)
+    return models
+
+
+@lru_cache(maxsize=1)
+def _load_model(model_key: str):
+    model_path = _ensure_model_file(model_key, MODEL_FILES[model_key])
+    if not model_path:
+        raise RuntimeError(f"Model '{model_key}' is not configured.")
+    print(f"Loading {model_key}: {model_path.name}")
+    return joblib.load(model_path, mmap_mode="r")
 
 
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Student Leak Radar API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Student Leak Radar API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -172,7 +177,8 @@ def _run(model_key: str, features: Features) -> dict:
     row = {f: getattr(features, f) for f in MODEL_FEATURES}
     df = pd.DataFrame([row])
 
-    prob = float(_models[model_key].predict_proba(df)[0][1])
+    model = _load_model(model_key)
+    prob = float(model.predict_proba(df)[0][1])
     risk_score = round(prob * 100)
 
     if risk_score >= 70:
@@ -191,8 +197,10 @@ def _run(model_key: str, features: Features) -> dict:
 
 
 def _validated(model_key: str) -> None:
-    if model_key not in _models:
-        raise HTTPException(400, f"Unknown model '{model_key}'. Use: {list(_models)}")
+    if model_key not in MODEL_FILES:
+        raise HTTPException(400, f"Unknown model '{model_key}'. Use: {list(MODEL_FILES)}")
+    if model_key not in _configured_models():
+        raise HTTPException(400, f"Model '{model_key}' is not configured. Available models: {_configured_models()}")
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +269,7 @@ def _build_eda() -> dict:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "models": list(_models)}
+    return {"status": "ok", "models": _configured_models()}
 
 
 @app.post("/predict")
