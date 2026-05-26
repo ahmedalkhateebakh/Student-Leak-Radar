@@ -1,59 +1,61 @@
 # =========================================================
-# System / Cache Files
+# Operating System Files
 # =========================================================
-.ipynb_checkpoints/
-__pycache__/
-*.pyc
 .DS_Store
 Thumbs.db
 
 # =========================================================
-# Virtual Environment
+# Python Cache and Build Artifacts
 # =========================================================
-venv/
-.env/
-.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+*.nbconvert.ipynb
 
 # =========================================================
-# Large / Raw Data
+# Virtual Environments and Local Environment Files
+# =========================================================
+.venv/
+venv/
+.env/
+*.env
+
+# =========================================================
+# Data Files and Generated Datasets
 # =========================================================
 data/raw/
 data/processed/
-
 project/data/raw/
 project/data/processed/
 project/backend/data/raw/
 project/backend/data/processed/
-
+*.csv
 *.zip
 
 # =========================================================
-# Ignore ALL CSV files by default
+# Machine Learning Artifacts
 # =========================================================
-*.csv
+*.pkl
+
 # =========================================================
-# Ignore Tests Folder
+# Logs and Local Runtime Output
+# =========================================================
+.codex-run/
+*.log
+
+# =========================================================
+# Local Utility / Generated Files
+# =========================================================
+*.ps1
+folder_structure.txt
+
+# =========================================================
+# Tests
 # =========================================================
 project/backend/tests/
 
 # =========================================================
-# Keep Main Notebooks
+# Notebooks
 # =========================================================
 !project/backend/notebooks/
-
-# =========================================================
-# Optional: Ignore notebook outputs cache
-# =========================================================
-*.nbconvert.ipynb
-
-
-.venv/
-__pycache__/
-*.pyc
-
-.codex-run/
-*.log
-*.ps1
-folder_structure.txt
-
-*.pkl
