@@ -12,8 +12,10 @@
   "dependencies": {
     "lucide-react": "^1.14.0",
     "papaparse": "^5.5.3",
+    "plotly.js-dist-min": "^3.5.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-router-dom": "^7.15.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

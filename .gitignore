@@ -50,3 +50,7 @@ project/backend/tests/
 .venv/
 __pycache__/
 *.pyc
+
+.codex-run/
+*.log
+*.ps1
