@@ -24,6 +24,12 @@ export const globalStyles = `
   button, input, select { font-family: inherit; }
   button:disabled { cursor: not-allowed; }
 
+  @media (min-width: 1024px) {
+    body {
+      zoom: 0.8;
+    }
+  }
+
   .fade-in {
     animation: fadeIn .28s ease both;
   }
