@@ -124,6 +124,29 @@ const ui = {
     padding: 18,
     minHeight: 260,
   },
+  emptyState: {
+    display: "grid",
+    gridTemplateColumns: "auto minmax(0, 1fr)",
+    gap: 18,
+    alignItems: "flex-start",
+  },
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    display: "grid",
+    placeItems: "center",
+    color: "#a7f3d0",
+    border: "1px solid rgba(45,212,191,.28)",
+    borderRadius: 18,
+    background: "linear-gradient(135deg, rgba(45,212,191,.16), rgba(56,189,248,.10))",
+  },
+  emptyActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+    marginTop: 16,
+  },
   stat: {
     border: "1px solid rgba(148,163,184,.16)",
     background: "linear-gradient(180deg, rgba(30,41,59,.68), rgba(15,23,42,.58))",
@@ -400,30 +423,67 @@ export default function EdaPage() {
               <progress value={uploadProgress.percent} max="100" aria-label={uploadProgress.stage} />
             </div>
           )}
-          <div style={ui.actionRow}>
-            <button type="button" style={ui.ghostButton} onClick={resetUpload}>
-              <RefreshCcw size={15} />
-              Use backend data
-            </button>
-          </div>
+          {(rows.length > 0 || fileName || backendData) && (
+            <div style={ui.actionRow}>
+              <button type="button" style={ui.ghostButton} onClick={resetUpload}>
+                <RefreshCcw size={15} />
+                {backendData ? "Show backend snapshot" : "Clear uploaded dataset"}
+              </button>
+            </div>
+          )}
           {parseError && <p style={{ ...ui.subtitle, color: "#fecaca" }}>{parseError}</p>}
         </aside>
       </div>
 
       {!analytics ? (
-        <section style={ui.panel}>
-          <p style={ui.subtitle}>{backendError || (backendLoading ? "Loading EDA summary from the backend..." : "No student records found. Upload a valid dataset to continue.")}</p>
-          {backendError && (
-            <button type="button" style={{ ...ui.ghostButton, marginTop: 14 }} onClick={() => loadEda(true)}>
-              <RefreshCcw size={15} />
-              Retry
-            </button>
-          )}
-        </section>
+        <EdaEmptyState backendError={backendError} backendLoading={backendLoading} onRetry={() => loadEda(true)} />
       ) : (
         <NotebookDashboard analytics={analytics} />
       )}
     </div>
+  );
+}
+
+function EdaEmptyState({ backendError, backendLoading, onRetry }) {
+  const isMissingBackendData = /studentInfo\.csv|data\/raw|not found/i.test(backendError);
+  const title = backendLoading
+    ? "Preparing Intelligence Lab data"
+    : isMissingBackendData
+      ? "EDA sample data is not bundled with this deployment"
+      : "Ready for dataset exploration";
+  const message = backendLoading
+    ? "The dashboard is checking whether a backend EDA snapshot is available."
+    : isMissingBackendData
+      ? "The production backend is intentionally deployed without raw OULAD CSV files to keep the service lightweight. Upload a CSV, Excel, or JSON dataset to generate the notebook charts here."
+      : "Upload a student dataset to inspect outcome distribution, module patterns, assessment scores, VLE activity, demographics, and model feature readiness.";
+
+  return (
+    <section style={ui.panel}>
+      <div style={ui.emptyState}>
+        <div style={ui.emptyIcon}>
+          <Database size={24} />
+        </div>
+        <div>
+          <span style={ui.pill}>
+            <Upload size={14} />
+            Awaiting dataset
+          </span>
+          <h3 style={{ ...ui.title, marginTop: 14 }}>{title}</h3>
+          <p style={{ ...ui.subtitle, maxWidth: 760 }}>{message}</p>
+          <div style={ui.emptyActions}>
+            <span style={ui.pill}>Upload cohort file</span>
+            <span style={ui.pill}>Review EDA charts</span>
+            <span style={ui.pill}>Check feature readiness</span>
+            {backendError && (
+              <button type="button" style={ui.ghostButton} onClick={onRetry}>
+                <RefreshCcw size={15} />
+                Retry backend data
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
