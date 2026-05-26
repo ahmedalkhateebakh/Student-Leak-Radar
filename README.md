@@ -273,6 +273,95 @@ cd project\backend
 python -m compileall api src
 ```
 
+## Deployment
+
+The project is designed to deploy as two services:
+
+- Backend API on Render.
+- Frontend dashboard on Vercel.
+
+Large model files should not be committed to GitHub. In production, the backend can download model files from Google Drive using environment variables.
+
+### Backend on Render
+
+Create a new Render Web Service:
+
+- Root directory: `project/backend`
+- Runtime: Python
+- Python version: pinned by `project/backend/.python-version`
+- Build command:
+
+```bash
+pip install -r requirements.txt
+```
+
+- Start command:
+
+```bash
+uvicorn api.main:app --host 0.0.0.0 --port $PORT
+```
+
+Add these environment variables in Render:
+
+```text
+MODEL_25_URL=https://drive.google.com/file/d/1kPDYDBPRAenL6su7xRylTsjwut9Nep5m/view?usp=sharing
+MODEL_50_URL=<add the Google Drive link for random_forest_50.pkl when upload finishes>
+FRONTEND_ORIGINS=https://your-vercel-app.vercel.app
+```
+
+Notes:
+
+- Google Drive model files must be shared as `Anyone with the link can view`.
+- `MODEL_25_URL` downloads `random_forest_25.pkl`.
+- `MODEL_50_URL` downloads `random_forest_50.pkl`.
+- If `MODEL_50_URL` is not set yet, the backend can still start with the 25% model only.
+- After deployment, test:
+
+```text
+https://your-render-service.onrender.com/health
+```
+
+Expected response while only the 25% model is configured:
+
+```json
+{"status":"ok","models":["model_25"]}
+```
+
+Expected response after both model URLs are configured:
+
+```json
+{"status":"ok","models":["model_25","model_50"]}
+```
+
+### Frontend on Vercel
+
+Create a new Vercel project:
+
+- Root directory: `project/frontend`
+- Build command:
+
+```bash
+npm run build
+```
+
+- Output directory:
+
+```text
+dist
+```
+
+Add this environment variable in Vercel:
+
+```text
+VITE_API_BASE_URL=https://your-render-service.onrender.com
+```
+
+After the first Vercel deploy, copy the Vercel URL and add it to Render:
+
+```text
+FRONTEND_ORIGINS=https://your-vercel-app.vercel.app
+```
+
 ## Future Improvements
 
 - Add SHAP-based feature explanations for each prediction.

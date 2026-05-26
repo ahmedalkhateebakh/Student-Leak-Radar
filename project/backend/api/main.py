@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
 from typing import Optional
 
+import gdown
 import joblib
 import numpy as np
 import pandas as pd
@@ -46,16 +48,56 @@ MODEL_FILES = {
     "model_50": "random_forest_50.pkl",
 }
 
+MODEL_URL_ENVS = {
+    "model_25": "MODEL_25_URL",
+    "model_50": "MODEL_50_URL",
+}
+
 MODEL_CONFIDENCE = {"model_25": 74, "model_50": 86}
 
 _models: dict = {}
 _eda_cache: dict = {}
 
 
+def _csv_env(name: str) -> list[str]:
+    return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
+
+
+def _ensure_model_file(model_key: str, filename: str) -> Optional[Path]:
+    model_path = MODELS_DIR / filename
+    if model_path.exists():
+        return model_path
+
+    url = os.getenv(MODEL_URL_ENVS[model_key], "").strip()
+    if not url:
+        print(f"Skipping {model_key}: {filename} not found and {MODEL_URL_ENVS[model_key]} is not set.")
+        return None
+
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading {model_key} from Google Drive to {model_path}...")
+    try:
+        gdown.download(url=url, output=str(model_path), quiet=False, fuzzy=True)
+    except Exception as exc:
+        if model_path.exists():
+            model_path.unlink()
+        raise RuntimeError(f"Could not download {model_key} from {MODEL_URL_ENVS[model_key]}") from exc
+
+    if not model_path.exists() or model_path.stat().st_size == 0:
+        raise RuntimeError(f"Downloaded model file is missing or empty: {model_path}")
+
+    return model_path
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _models.clear()
     for key, filename in MODEL_FILES.items():
-        _models[key] = joblib.load(MODELS_DIR / filename)
+        model_path = _ensure_model_file(key, filename)
+        if model_path:
+            _models[key] = joblib.load(model_path)
+            print(f"Loaded {key}: {model_path.name}")
+    if not _models:
+        raise RuntimeError("No models were loaded. Add local .pkl files or set MODEL_25_URL / MODEL_50_URL.")
     yield
 
 
@@ -72,8 +114,12 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
+        *_csv_env("FRONTEND_ORIGINS"),
     ],
-    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):\d+$",
+    allow_origin_regex=os.getenv(
+        "CORS_ALLOW_ORIGIN_REGEX",
+        r"^(http://(localhost|127\.0\.0\.1):\d+|https://.*\.vercel\.app)$",
+    ),
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )

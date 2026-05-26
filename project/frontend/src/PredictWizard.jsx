@@ -866,6 +866,7 @@ export default function PredictWizard() {
   const [operationStage, setOperationStage] = useState("");
   const [processingResult, setProcessingResult] = useState(null);
   const [exportStage, setExportStage] = useState("");
+  const [availableModels, setAvailableModels] = useState([]);
 
   useEffect(() => {
     const tabIndex = STEP_TABS.indexOf(urlState.tab);
@@ -880,6 +881,26 @@ export default function PredictWizard() {
       return next.selectedModel === prev.selectedModel && next.inputMethod === prev.inputMethod ? prev : next;
     });
   }, [urlState.input, urlState.model]);
+
+  useEffect(() => {
+    let alive = true;
+    apiFetch("/health")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (alive && Array.isArray(data?.models)) setAvailableModels(data.models);
+      })
+      .catch(() => {
+        if (alive) setAvailableModels([]);
+      });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!availableModels.length || availableModels.includes(formData.selectedModel)) return;
+    const nextModel = availableModels[0];
+    setFormData((prev) => ({ ...prev, selectedModel: nextModel }));
+    setUrlState({ model: nextModel });
+  }, [availableModels, formData.selectedModel, setUrlState]);
 
   const filledCount = useMemo(
     () => Object.entries(formData).filter(([key, value]) => !["selectedModel", "inputMethod"].includes(key) && value !== "").length,
@@ -1104,6 +1125,7 @@ export default function PredictWizard() {
         {step === 1 && (
           <ModelStep
             selectedModel={formData.selectedModel}
+            availableModels={availableModels}
             setSelectedModel={(m) => {
               setFormData((p) => ({ ...p, selectedModel: m }));
               setUrlState({ model: m });
@@ -1196,13 +1218,18 @@ function StartStep({ inputMethod, setInputMethod, onNext }) {
   );
 }
 
-function ModelStep({ selectedModel, setSelectedModel, onBack, onNext }) {
+function ModelStep({ selectedModel, availableModels, setSelectedModel, onBack, onNext }) {
+  const hasModelManifest = availableModels.length > 0;
+  const isModelAvailable = (model) => !hasModelManifest || availableModels.includes(model);
+  const canContinue = isModelAvailable(selectedModel);
+
   return (
     <div className="fade-in">
       <SectionIntro eyebrow="Model" title="Choose prediction checkpoint" desc="Select the trained model version. The 25% model is earlier but less certain, while the 50% model has richer behavior signals." />
       <div style={styles.modelGrid}>
         <ModelCard
           active={selectedModel === "model_25"}
+          disabled={!isModelAvailable("model_25")}
           percent="25%"
           title="Early Detection Model"
           desc="Designed for first-quarter detection. Useful when intervention speed matters most."
@@ -1213,6 +1240,7 @@ function ModelStep({ selectedModel, setSelectedModel, onBack, onNext }) {
         />
         <ModelCard
           active={selectedModel === "model_50"}
+          disabled={!isModelAvailable("model_50")}
           percent="50%"
           title="Mid-Course Model"
           desc="Uses richer academic and behavioral signals. Better for more confident prediction."
@@ -1224,7 +1252,7 @@ function ModelStep({ selectedModel, setSelectedModel, onBack, onNext }) {
       </div>
       <div style={styles.navRow}>
         <button style={styles.secondaryBtn} onClick={onBack}>← Back</button>
-        <button className="primary-action slr-cta-btn" style={styles.primaryBtn} onClick={onNext}>
+        <button className="primary-action slr-cta-btn" style={styles.primaryBtn} onClick={onNext} disabled={!canContinue}>
           Continue to Data <span className="action-arrow">→</span>
         </button>
       </div>
@@ -2235,9 +2263,15 @@ function ChoiceCard({ active, Icon, title, desc, bullets, onClick }) {
   );
 }
 
-function ModelCard({ active, percent, title, desc, metrics, accuracy, accuracyColor, onClick }) {
+function ModelCard({ active, disabled = false, percent, title, desc, metrics, accuracy, accuracyColor, onClick }) {
   return (
-    <button type="button" className={`pc-model-card${active ? " is-selected" : ""}`} style={{ ...styles.modelCard, ...(active ? styles.modelActive : {}) }} onClick={onClick}>
+    <button
+      type="button"
+      className={`pc-model-card${active ? " is-selected" : ""}`}
+      style={{ ...styles.modelCard, ...(active ? styles.modelActive : {}), ...(disabled ? { opacity: 0.45, cursor: "not-allowed" } : {}) }}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+    >
       <div style={styles.modelSelectionBadge}>
         <SelectionBadge active={active} />
       </div>
@@ -2245,6 +2279,7 @@ function ModelCard({ active, percent, title, desc, metrics, accuracy, accuracyCo
       <div style={styles.modelPercent}>{percent}</div>
       <p style={styles.modelDesc}>{desc}</p>
       <div style={styles.metricList}>{metrics.map((m) => <span key={m} style={styles.metricPill}>{m}</span>)}</div>
+      {disabled && <div style={{ ...styles.metricPill, width: "fit-content", marginTop: 12 }}>Unavailable until model URL is configured</div>}
       <div className="pc-model-accuracy" aria-hidden="true">
         <span style={{ "--accuracy-width": active ? `${accuracy}%` : "0%", "--accuracy-color": accuracyColor }} />
       </div>
