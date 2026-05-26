@@ -42,8 +42,8 @@ MODEL_FEATURES = [
 ]
 
 MODEL_FILES = {
-    "model_25": "selected_features_of_the_25percent_Early_Warning___Random_Forest.pkl",
-    "model_50": "selected_features_of_the_50percent_Early_Warning___Random_Forest.pkl",
+    "model_25": "random_forest_25.pkl",
+    "model_50": "random_forest_50.pkl",
 }
 
 MODEL_CONFIDENCE = {"model_25": 74, "model_50": 86}

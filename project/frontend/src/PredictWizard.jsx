@@ -990,6 +990,24 @@ export default function PredictWizard() {
     });
   };
 
+  const resetWorkflow = () => {
+    setStep(0);
+    setUrlState({ tab: STEP_TABS[0], model: "model_25", input: INPUT_METHODS.manual });
+    setFormData(initialFormData);
+    setPrediction(null);
+    setUploadedRows([]);
+    setBatchResults([]);
+    setFiles([]);
+    setFileError("");
+    setApiError("");
+    setLoading(false);
+    setUploadProgress({ visible: false, stage: "", percent: 0 });
+    setOperationStage("");
+    setProcessingResult(null);
+    setExportStage("");
+    recovery.clear();
+  };
+
   const runPrediction = async () => {
     setLoading(true);
     setApiError("");
@@ -1121,7 +1139,7 @@ export default function PredictWizard() {
             canContinue={canContinueFromData}
           />
         )}
-        {step === 3 && (
+        {step === 3 && prediction && (
           <ResultsStep
             prediction={prediction}
             formData={formData}
@@ -1130,20 +1148,14 @@ export default function PredictWizard() {
             files={files}
             batchResults={batchResults}
             uploadedRows={uploadedRows}
-            onReset={() => {
-              setPrediction(null);
-              setUploadedRows([]);
-              setBatchResults([]);
-              setFiles([]);
-              setFileError("");
-              setApiError("");
-              goToStep(0);
-              recovery.clear();
-            }}
+            onReset={resetWorkflow}
             onBack={() => goToStep(2)}
             exportStage={exportStage}
             setExportStage={setExportStage}
           />
+        )}
+        {step === 3 && !prediction && (
+          <EmptyResultsStep onReset={resetWorkflow} />
         )}
       </section>
     </div>
@@ -1313,6 +1325,15 @@ function ResultsStep({ prediction, formData, batchResults, uploadedRows, onReset
           <button className="slr-cta-btn" style={styles.primaryBtn} onClick={onReset}>Start New Prediction</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function EmptyResultsStep({ onReset }) {
+  return (
+    <div className="fade-in">
+      <SectionIntro eyebrow="Model Output" title="No prediction is loaded" desc="Start a new prediction to generate model output." />
+      <button className="slr-cta-btn" style={styles.primaryBtn} onClick={onReset}>Start New Prediction</button>
     </div>
   );
 }

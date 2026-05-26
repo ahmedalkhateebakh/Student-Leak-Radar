@@ -103,6 +103,13 @@ Pipeline stages:
 
    Saved model pipelines are loaded by the FastAPI backend from `backend/models` and exposed through prediction endpoints for single-student and batch scoring.
 
+   Deployed model files:
+
+   ```text
+   project/backend/models/random_forest_25.pkl
+   project/backend/models/random_forest_50.pkl
+   ```
+
 7. Dashboard Interpretation
 
    Predictions are translated into readable risk scores, risk bands, cohort summaries, and export-ready outputs for academic review.
@@ -141,6 +148,14 @@ The Random Forest model was evaluated at two early-warning checkpoints to measur
 These results show that prediction accuracy improves as more student activity and assessment data becomes available.
 
 ## Dashboard Preview
+
+<p align="center">
+  <img src="project/poster/student-leak-radar-poster-updated.png" alt="Student Risk Radar project poster" width="900">
+</p>
+
+<p align="center">
+  <em>Project poster summarizing the early-warning workflow, selected features, model checkpoints, and risk-scoring output.</em>
+</p>
 
 The dashboard is organized into five main pages:
 
