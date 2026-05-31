@@ -305,7 +305,8 @@ Add these environment variables in Render:
 
 ```text
 MODEL_25_URL=https://drive.google.com/file/d/1kPDYDBPRAenL6su7xRylTsjwut9Nep5m/view?usp=sharing
-MODEL_50_URL=<add the Google Drive link for random_forest_50.pkl when upload finishes>
+MODEL_50_URL=https://drive.google.com/file/d/1Nrz2Qqintjpl9rKqnQGBAhuDToiwmY44/view?usp=sharing
+STUDENT_INFO_URL=https://drive.google.com/file/d/127Of2eBe2bihM5GuI7bM921G3lingjaR/view?usp=sharing
 FRONTEND_ORIGINS=https://your-vercel-app.vercel.app
 ```
 
@@ -313,8 +314,11 @@ Notes:
 
 - Google Drive model files must be shared as `Anyone with the link can view`.
 - `MODEL_25_URL` downloads `random_forest_25.pkl`.
-- `MODEL_50_URL` downloads `random_forest_50.pkl`.
-- If `MODEL_50_URL` is not set yet, the backend can still start with the 25% model only.
+- `MODEL_50_URL` downloads `random_forest_50.pkl`. The backend also has this public link as a built-in default.
+- `STUDENT_INFO_URL` lets the Intelligence Lab load backend EDA data automatically on first open. The backend also has this public link as a built-in default.
+- You can also configure `EDA_DATA_URL` with a shared Google Drive folder or ZIP containing `studentInfo.csv`, `studentAssessment.csv`, and `vle.csv`.
+- For full score and VLE charts, configure optional individual shared file links with `STUDENT_ASSESSMENT_URL` and `VLE_URL`.
+- If `MODEL_25_URL` is not set yet, the backend can still start with the 50% model only.
 - After deployment, test:
 
 ```text

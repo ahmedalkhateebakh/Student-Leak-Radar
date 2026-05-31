@@ -1,7 +1,10 @@
 from functools import lru_cache
 import os
 from pathlib import Path
+import shutil
+import tempfile
 from typing import Optional
+import zipfile
 
 import gdown
 import joblib
@@ -22,6 +25,17 @@ DATA_DIR_CANDIDATES = [
     PROJECT_DIR / "data" / "raw",
     BACKEND_DIR / "data" / "raw",
 ]
+
+EDA_ARCHIVE_URL_ENVS = ("EDA_DATA_URL", "RAW_DATA_URL", "OULAD_DATA_URL")
+EDA_FILE_URL_ENVS = {
+    "studentInfo.csv": ("STUDENT_INFO_URL", "DATA_STUDENT_INFO_URL"),
+    "studentAssessment.csv": ("STUDENT_ASSESSMENT_URL", "DATA_STUDENT_ASSESSMENT_URL"),
+    "vle.csv": ("VLE_URL", "DATA_VLE_URL"),
+}
+EDA_FILE_DEFAULT_URLS = {
+    "studentInfo.csv": "https://drive.google.com/file/d/127Of2eBe2bihM5GuI7bM921G3lingjaR/view?usp=sharing",
+}
+EDA_KNOWN_FILES = tuple(EDA_FILE_URL_ENVS)
 
 MODEL_FEATURES = [
     "avg_score_until_cutoff",
@@ -53,6 +67,10 @@ MODEL_URL_ENVS = {
     "model_50": "MODEL_50_URL",
 }
 
+MODEL_DEFAULT_URLS = {
+    "model_50": "https://drive.google.com/file/d/1Nrz2Qqintjpl9rKqnQGBAhuDToiwmY44/view?usp=sharing",
+}
+
 MODEL_CONFIDENCE = {"model_25": 74, "model_50": 86}
 
 _eda_cache: dict = {}
@@ -62,12 +80,31 @@ def _csv_env(name: str) -> list[str]:
     return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
 
 
+def _first_env(names: tuple[str, ...]) -> tuple[str, str]:
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return name, value
+    return "", ""
+
+
+def _model_url(model_key: str) -> tuple[str, str]:
+    env_name = MODEL_URL_ENVS[model_key]
+    url = os.getenv(env_name, "").strip()
+    if url:
+        return env_name, url
+    default_url = MODEL_DEFAULT_URLS.get(model_key, "")
+    if default_url:
+        return "built-in default", default_url
+    return "", ""
+
+
 def _ensure_model_file(model_key: str, filename: str) -> Optional[Path]:
     model_path = MODELS_DIR / filename
     if model_path.exists():
         return model_path
 
-    url = os.getenv(MODEL_URL_ENVS[model_key], "").strip()
+    url_source, url = _model_url(model_key)
     if not url:
         print(f"Skipping {model_key}: {filename} not found and {MODEL_URL_ENVS[model_key]} is not set.")
         return None
@@ -79,7 +116,7 @@ def _ensure_model_file(model_key: str, filename: str) -> Optional[Path]:
     except Exception as exc:
         if model_path.exists():
             model_path.unlink()
-        raise RuntimeError(f"Could not download {model_key} from {MODEL_URL_ENVS[model_key]}") from exc
+        raise RuntimeError(f"Could not download {model_key} from {url_source}") from exc
 
     if not model_path.exists() or model_path.stat().st_size == 0:
         raise RuntimeError(f"Downloaded model file is missing or empty: {model_path}")
@@ -91,7 +128,7 @@ def _configured_models() -> list[str]:
     models = []
     for key, filename in MODEL_FILES.items():
         has_local_file = (MODELS_DIR / filename).exists()
-        has_remote_url = bool(os.getenv(MODEL_URL_ENVS[key], "").strip())
+        has_remote_url = bool(_model_url(key)[1])
         if has_local_file or has_remote_url:
             models.append(key)
     return models
@@ -218,16 +255,102 @@ def _get_data_dir() -> Path:
     return DATA_DIR_CANDIDATES[0]
 
 
+def _download_google_drive_file(url: str, output_path: Path, label: str) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading {label} from Google Drive to {output_path}...")
+    try:
+        gdown.download(url=url, output=str(output_path), quiet=False, fuzzy=True)
+    except Exception as exc:
+        if output_path.exists():
+            output_path.unlink()
+        raise RuntimeError(f"Could not download {label}") from exc
+
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise RuntimeError(f"Downloaded {label} is missing or empty: {output_path}")
+
+
+def _safe_extract_zip(zip_path: Path, output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    root = output_dir.resolve()
+    with zipfile.ZipFile(zip_path) as archive:
+        for member in archive.infolist():
+            target = (output_dir / member.filename).resolve()
+            if not target.is_relative_to(root):
+                raise RuntimeError(f"Refusing to extract unsafe archive member: {member.filename}")
+        archive.extractall(output_dir)
+
+
+def _promote_eda_files(data_dir: Path) -> None:
+    for filename in EDA_KNOWN_FILES:
+        target = data_dir / filename
+        if target.exists():
+            continue
+        matches = [path for path in data_dir.rglob(filename) if path.is_file()]
+        if matches:
+            shutil.copy2(matches[0], target)
+
+
+def _download_eda_archive(data_dir: Path) -> bool:
+    env_name, url = _first_env(EDA_ARCHIVE_URL_ENVS)
+    if not url:
+        return False
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Preparing EDA data from {env_name}...")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        if "/folders/" in url:
+            try:
+                gdown.download_folder(url=url, output=str(data_dir), quiet=False)
+            except Exception as exc:
+                raise RuntimeError(f"Could not download EDA data folder from {env_name}") from exc
+        else:
+            archive_path = tmp_dir / "eda_data_download"
+            _download_google_drive_file(url, archive_path, env_name)
+            if zipfile.is_zipfile(archive_path):
+                _safe_extract_zip(archive_path, data_dir)
+            else:
+                raise RuntimeError(
+                    f"{env_name} must point to a Google Drive folder or a ZIP file containing {', '.join(EDA_KNOWN_FILES)}."
+                )
+
+    _promote_eda_files(data_dir)
+    return True
+
+
+def _download_eda_files(data_dir: Path) -> None:
+    _download_eda_archive(data_dir)
+    for filename, env_names in EDA_FILE_URL_ENVS.items():
+        path = data_dir / filename
+        if path.exists():
+            continue
+        env_name, url = _first_env(env_names)
+        if not url:
+            env_name = "built-in default"
+            url = EDA_FILE_DEFAULT_URLS.get(filename, "")
+        if url:
+            _download_google_drive_file(url, path, env_name)
+
+
 def _build_eda() -> dict:
     result: dict = {}
     data_dir = _get_data_dir()
+    missing_eda_files = [filename for filename in EDA_KNOWN_FILES if not (data_dir / filename).exists()]
+    if missing_eda_files:
+        try:
+            _download_eda_files(data_dir)
+        except Exception as exc:
+            if not (data_dir / "studentInfo.csv").exists():
+                raise HTTPException(500, str(exc)) from exc
+            print(f"Could not download optional EDA files ({', '.join(missing_eda_files)}): {exc}")
     result["data_dir"] = str(data_dir)
 
     # studentInfo.csv — primary source for most charts
     info_path = data_dir / "studentInfo.csv"
     if not info_path.exists():
         checked = ", ".join(str(path) for path in DATA_DIR_CANDIDATES)
-        raise HTTPException(500, f"studentInfo.csv not found in data/raw/. Checked: {checked}")
+        envs = ", ".join([*EDA_ARCHIVE_URL_ENVS, *[env for names in EDA_FILE_URL_ENVS.values() for env in names]])
+        raise HTTPException(500, f"studentInfo.csv not found in data/raw/. Checked: {checked}. Configure one of: {envs}")
 
     info = pd.read_csv(info_path)
     result["total_rows"] = len(info)
