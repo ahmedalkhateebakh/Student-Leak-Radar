@@ -1,8 +1,9 @@
-from functools import lru_cache
+import gc
 import os
 from pathlib import Path
 import shutil
 import tempfile
+import threading
 from typing import Optional
 import zipfile
 
@@ -74,6 +75,8 @@ MODEL_DEFAULT_URLS = {
 MODEL_CONFIDENCE = {"model_25": 74, "model_50": 86}
 
 _eda_cache: dict = {}
+_model_cache: dict = {"key": None, "model": None}
+_model_lock = threading.Lock()
 
 
 def _csv_env(name: str) -> list[str]:
@@ -134,13 +137,25 @@ def _configured_models() -> list[str]:
     return models
 
 
-@lru_cache(maxsize=1)
 def _load_model(model_key: str):
-    model_path = _ensure_model_file(model_key, MODEL_FILES[model_key])
-    if not model_path:
-        raise RuntimeError(f"Model '{model_key}' is not configured.")
-    print(f"Loading {model_key}: {model_path.name}")
-    return joblib.load(model_path, mmap_mode="r")
+    with _model_lock:
+        if _model_cache["key"] == model_key and _model_cache["model"] is not None:
+            return _model_cache["model"]
+
+        if _model_cache["model"] is not None:
+            print(f"Unloading {_model_cache['key']} before loading {model_key}.")
+            _model_cache["key"] = None
+            _model_cache["model"] = None
+            gc.collect()
+
+        model_path = _ensure_model_file(model_key, MODEL_FILES[model_key])
+        if not model_path:
+            raise RuntimeError(f"Model '{model_key}' is not configured.")
+        print(f"Loading {model_key}: {model_path.name}")
+        model = joblib.load(model_path, mmap_mode="r")
+        _model_cache["key"] = model_key
+        _model_cache["model"] = model
+        return model
 
 
 # ---------------------------------------------------------------------------

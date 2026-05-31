@@ -1,120 +1,35 @@
-# Student Risk Radar
+# Student Leak Radar
 
-An AI-powered early-warning dashboard for identifying students who may be at academic risk before the final course outcome. Student Risk Radar combines machine-learning models, learning-behavior analytics, and a modern web dashboard to help academic teams prioritize timely intervention.
+Student Leak Radar is an early-warning dashboard for identifying students who may be at academic risk before the final course outcome. It combines trained machine-learning models, cohort-level analytics, and a React dashboard for single-student review and batch prediction.
 
-## Overview
+Live application: https://student-leak-radar.vercel.app
 
-Student Risk Radar is built around a practical education analytics workflow: collect student activity and assessment data, engineer early-warning features, run trained predictive models, and present risk insights through an interactive dashboard.
+## What It Does
 
-The system supports both individual student review and batch cohort scoring. It is designed for online, blended, and data-driven education environments where instructors need early signals before failure or withdrawal becomes final.
+- Predicts student risk at 25% and 50% course-progress checkpoints.
+- Supports single-student prediction from manually entered features.
+- Supports batch prediction from one uploaded CSV, Excel, or JSON file.
+- Shows clear Low, Medium, and High Risk bands for academic follow-up.
+- Provides an Intelligence Lab for outcome distribution, module patterns, demographic context, and dataset readiness.
+- Includes CSV requirements and model output pages to make the workflow easier to audit and reuse.
 
-## Problem
+## Why It Matters
 
-Academic risk is often detected too late. By the time final grades, withdrawal records, or failed outcomes are available, the opportunity for meaningful intervention may already be gone.
+Academic risk is often discovered after students have already failed, withdrawn, or disengaged for too long. This project focuses on earlier signals: assessment performance, submission behavior, platform activity, and student profile data. The goal is not to replace academic judgment, but to help instructors and support teams prioritize timely intervention.
 
-Common challenges include:
+## Demo Workflow
 
-- Students disengage gradually across learning platforms.
-- Assessment delays and low activity patterns are difficult to monitor manually.
-- Large cohorts make instructor follow-up harder.
-- Raw learning data is not immediately useful without analytics and prediction.
-- Institutions need earlier, clearer, and more actionable student-risk signals.
+1. Open the live dashboard.
+2. Go to **Prediction Console**.
+3. Choose manual input or upload one cohort file.
+4. Select the 25% or 50% Random Forest model.
+5. Run prediction and review risk bands, summary charts, and export-ready output.
 
-## Solution
+The Intelligence Lab can also load a backend EDA snapshot automatically when the backend is configured, while still allowing the user to upload one local dataset for exploration.
 
-Student Risk Radar transforms learning-platform behavior, assessment performance, submission timing, and student profile features into actionable risk predictions.
+## Model Inputs
 
-The platform provides:
-
-- Early-warning risk prediction at key course checkpoints.
-- Risk scores and risk levels for single students and uploaded cohorts.
-- Dashboard views for cohort behavior, readiness, and intervention priorities.
-- CSV contract guidance for clean data preparation.
-- Export-ready prediction outputs for follow-up workflows.
-
-## Features
-
-- Single-student prediction workflow.
-- Batch cohort risk scoring from CSV uploads.
-- Low, Medium, and High Risk classification.
-- Average risk score and risk-tier visualizations.
-- Intelligence Lab for exploratory cohort analysis.
-- CSV Requirements page for upload schemas and required columns.
-- Model Output page for reviewing and exporting the latest predictions.
-- FastAPI backend with single and batch prediction endpoints.
-- Feature-engineering utility for OULAD-like raw data.
-- Responsive React dashboard with a professional dark SaaS interface.
-
-## Tech Stack
-
-Frontend:
-
-- React
-- Vite
-- React Router
-- Plotly.js
-- Papa Parse
-- SheetJS/XLSX
-- Lucide React
-- Tailwind CSS plugin
-
-Backend and Machine Learning:
-
-- Python 3.11
-- FastAPI
-- Uvicorn
-- NumPy
-- Pandas
-- scikit-learn
-- XGBoost
-- Joblib
-- OpenPyXL
-
-## Machine Learning Pipeline
-
-The machine-learning workflow is based on early prediction checkpoints during course progress. The goal is to identify at-risk students before the final result by using behavioral and assessment signals available early in the course.
-
-Pipeline stages:
-
-1. Raw Data Collection
-
-   The project works with OULAD-like student learning records, including student profile data, course information, VLE activity, assessment metadata, and student assessment submissions.
-
-2. Data Cleaning and Validation
-
-   Input tables are validated for required columns, expected table names, numeric fields, and missing values. The processing utility supports CSV folders, JSON, XLSX, SQLite databases, and feature-ready tables.
-
-3. Feature Engineering
-
-   Student activity and assessment records are converted into model-ready features, including average score, submitted assessments, activity days, submission delay, VLE activity counts, unique sites, activity diversity, and demographic context.
-
-4. Early-Warning Checkpoints
-
-   The system evaluates students at two course-progress checkpoints:
-
-   - 25% of course progress
-   - 50% of course progress
-
-5. Model Training and Selection
-
-   Multiple model experiments were compared during development. Random Forest was selected for the deployed early-warning workflow based on strong accuracy and practical performance.
-
-6. Model Serving
-
-   Saved model pipelines are loaded by the FastAPI backend from `backend/models` and exposed through prediction endpoints for single-student and batch scoring.
-
-   Deployed model files:
-
-   ```text
-   project/backend/models/random_forest_25.pkl
-   project/backend/models/random_forest_50.pkl
-   ```
-
-7. Dashboard Interpretation
-
-   Predictions are translated into readable risk scores, risk bands, cohort summaries, and export-ready outputs for academic review.
-
-The deployed API expects 17 selected features:
+The deployed prediction API expects 17 model-ready features:
 
 ```text
 avg_score_until_cutoff
@@ -138,89 +53,85 @@ imd_band
 
 ## Model Performance
 
-The Random Forest model was evaluated at two early-warning checkpoints to measure how well the system can identify at-risk students before the final course outcome.
+| Checkpoint | Model | Accuracy |
+|---|---|---:|
+| 25% course progress | Random Forest | 80.73% |
+| 50% course progress | Random Forest | 86.47% |
 
-| Course Progress Checkpoint | Model | Accuracy |
-|---|---|---|
-| 25% of course progress | Random Forest | 80.73% |
-| 50% of course progress | Random Forest | 86.47% |
-
-These results show that prediction accuracy improves as more student activity and assessment data becomes available.
-
-## Dashboard Preview
-
-<p align="center">
-  <img src="project/poster/student-leak-radar-poster-updated.png" alt="Student Risk Radar project poster" width="900">
-</p>
-
-<p align="center">
-  <em>Project poster summarizing the early-warning workflow, selected features, model checkpoints, and risk-scoring output.</em>
-</p>
-
-The dashboard is organized into five main pages:
+## Application Pages
 
 | Page | Route | Purpose |
 |---|---|---|
-| Home | `/` | Project story, goals, model context, and team profile |
-| Prediction Console | `/prediction-console` | Single-student and batch model scoring |
-| Intelligence Lab | `/intelligence-lab` | Cohort EDA, behavior analysis, and dataset readiness |
-| CSV Requirements | `/csv-requirements` | Required column contracts for prediction and analytics uploads |
-| Model Output | `/model-output` | Latest prediction outputs and export workflow |
+| Home | `/` | Project overview and model context |
+| Prediction Console | `/prediction-console` | Manual and batch risk prediction |
+| Intelligence Lab | `/intelligence-lab` | Exploratory cohort analytics |
+| CSV Requirements | `/csv-requirements` | Upload schema guidance |
+| Model Output | `/model-output` | Latest prediction output and export tools |
 
-Key dashboard workflows:
+## Tech Stack
 
-- Run a prediction for one student.
-- Upload a cohort file for batch scoring.
-- Review high-risk and medium-risk students.
-- Inspect cohort-level patterns in the Intelligence Lab.
-- Export prediction results for intervention planning.
+Frontend:
 
-## Project Structure
+- React
+- Vite
+- React Router
+- Papa Parse
+- SheetJS/XLSX
+- Plotly.js
+- Lucide React
+
+Backend and ML:
+
+- Python 3.11
+- FastAPI
+- Uvicorn
+- Pandas
+- NumPy
+- scikit-learn
+- Joblib
+- gdown
+
+## Repository Structure
 
 ```text
 project/
-|-- README.md
-|-- start-backend.ps1
 |-- backend/
 |   |-- api/
 |   |   |-- main.py
 |   |-- src/
 |   |   |-- processing.py
 |   |-- requirements.txt
-|   |-- models/
-|   |-- notebooks/
 |-- frontend/
+|   |-- src/
+|   |   |-- App.jsx
+|   |   |-- HomePage.jsx
+|   |   |-- PredictWizard.jsx
+|   |   |-- EdaPage.jsx
+|   |   |-- CsvRequirementsPage.jsx
+|   |   |-- ModelOutputPage.jsx
 |   |-- package.json
 |   |-- vite.config.js
-|   |-- vercel.json
-|   |-- nginx.conf
-|   |-- public/
-|   |-- src/
-|       |-- HomePage.jsx
-|       |-- PredictWizard.jsx
-|       |-- EdaPage.jsx
-|       |-- CsvRequirementsPage.jsx
-|       |-- ModelOutputPage.jsx
-|       |-- routeConfig.js
-|       |-- dataGuides.js
 |-- reports/
 |-- poster/
 |-- archive/
 ```
 
-## How to Run
+## Local Development
 
 Prerequisites:
 
 - Python 3.11
 - Node.js and npm
-- Saved model files inside `backend/models`
 
 Start the backend:
 
 ```powershell
-cd project
-.\start-backend.ps1
+cd project\backend
+py -3.11 -m venv .venv
+.\.venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Start the frontend:
@@ -231,13 +142,13 @@ npm install
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Open the application:
+Open:
 
 ```text
 http://127.0.0.1:5173
 ```
 
-Verify the backend:
+Check the backend:
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/health
@@ -249,18 +160,33 @@ Expected response:
 {"status":"ok","models":["model_25","model_50"]}
 ```
 
-Manual backend setup:
+## Deployment
 
-```powershell
-cd project\backend
-py -3.11 -m venv .venv
-.\.venv\Scripts\activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+The app is deployed as two services:
+
+- Frontend on Vercel
+- Backend API on Render
+
+Required frontend environment variable on Vercel:
+
+```text
+VITE_API_BASE_URL=https://your-render-service.onrender.com
 ```
 
-Quality checks:
+Common backend environment variables on Render:
+
+```text
+MODEL_25_URL=<google-drive-link-for-random_forest_25.pkl>
+MODEL_50_URL=<google-drive-link-for-random_forest_50.pkl>
+STUDENT_INFO_URL=<google-drive-link-for-studentInfo.csv>
+FRONTEND_ORIGINS=https://student-leak-radar.vercel.app
+```
+
+After changing any Vercel environment variable, redeploy the frontend so Vite includes the new value in the production build.
+
+## Quality Checks
+
+Frontend:
 
 ```powershell
 cd project\frontend
@@ -268,111 +194,15 @@ npm run lint
 npm run build
 ```
 
+Backend:
+
 ```powershell
 cd project\backend
 python -m compileall api src
 ```
 
-## Deployment
+## Notes
 
-The project is designed to deploy as two services:
-
-- Backend API on Render.
-- Frontend dashboard on Vercel.
-
-Large model files should not be committed to GitHub. In production, the backend can download model files from Google Drive using environment variables.
-
-### Backend on Render
-
-Create a new Render Web Service:
-
-- Root directory: `project/backend`
-- Runtime: Python
-- Python version: pinned by `project/backend/.python-version`
-- Build command:
-
-```bash
-pip install -r requirements.txt
-```
-
-- Start command:
-
-```bash
-uvicorn api.main:app --host 0.0.0.0 --port $PORT
-```
-
-Add these environment variables in Render:
-
-```text
-MODEL_25_URL=https://drive.google.com/file/d/1kPDYDBPRAenL6su7xRylTsjwut9Nep5m/view?usp=sharing
-MODEL_50_URL=https://drive.google.com/file/d/1Nrz2Qqintjpl9rKqnQGBAhuDToiwmY44/view?usp=sharing
-STUDENT_INFO_URL=https://drive.google.com/file/d/127Of2eBe2bihM5GuI7bM921G3lingjaR/view?usp=sharing
-FRONTEND_ORIGINS=https://your-vercel-app.vercel.app
-```
-
-Notes:
-
-- Google Drive model files must be shared as `Anyone with the link can view`.
-- `MODEL_25_URL` downloads `random_forest_25.pkl`.
-- `MODEL_50_URL` downloads `random_forest_50.pkl`. The backend also has this public link as a built-in default.
-- `STUDENT_INFO_URL` lets the Intelligence Lab load backend EDA data automatically on first open. The backend also has this public link as a built-in default.
-- You can also configure `EDA_DATA_URL` with a shared Google Drive folder or ZIP containing `studentInfo.csv`, `studentAssessment.csv`, and `vle.csv`.
-- For full score and VLE charts, configure optional individual shared file links with `STUDENT_ASSESSMENT_URL` and `VLE_URL`.
-- If `MODEL_25_URL` is not set yet, the backend can still start with the 50% model only.
-- After deployment, test:
-
-```text
-https://your-render-service.onrender.com/health
-```
-
-Expected response while only the 25% model is configured:
-
-```json
-{"status":"ok","models":["model_25"]}
-```
-
-Expected response after both model URLs are configured:
-
-```json
-{"status":"ok","models":["model_25","model_50"]}
-```
-
-### Frontend on Vercel
-
-Create a new Vercel project:
-
-- Root directory: `project/frontend`
-- Build command:
-
-```bash
-npm run build
-```
-
-- Output directory:
-
-```text
-dist
-```
-
-Add this environment variable in Vercel:
-
-```text
-VITE_API_BASE_URL=https://your-render-service.onrender.com
-```
-
-After the first Vercel deploy, copy the Vercel URL and add it to Render:
-
-```text
-FRONTEND_ORIGINS=https://your-vercel-app.vercel.app
-```
-
-## Future Improvements
-
-- Add SHAP-based feature explanations for each prediction.
-- Add persistent student history and intervention tracking.
-- Add teacher feedback loops for model improvement.
-- Add LMS integrations such as Moodle and Google Classroom.
-- Add authentication and role-based access for production use.
-- Add downloadable PDF reports for individual students and cohorts.
-- Add monitoring dashboards for deployed model performance.
-- Add richer model comparison and calibration views.
+- Large model files are not intended to be committed to GitHub.
+- The backend can download model files from Google Drive when deployment environment variables are configured.
+- Batch prediction is designed around a single uploaded dataset to keep the user workflow simple.
